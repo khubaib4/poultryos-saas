@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { OfflineProvider } from "@/components/providers/OfflineProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { NavigationProgress } from "@/components/providers/NavigationProgress";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -38,6 +40,9 @@ export default function RootLayout({
         <AuthProvider>
           <OfflineProvider>
             <QueryProvider>
+              <Suspense fallback={null}>
+                <NavigationProgress />
+              </Suspense>
               {children}
               <Toaster />
             </QueryProvider>

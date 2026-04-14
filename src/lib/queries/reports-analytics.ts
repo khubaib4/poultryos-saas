@@ -473,37 +473,47 @@ function buildExpenseSplit(w: WeeklyReportData): {
 async function getCashFlowLastSixMonths(
   farmId: string
 ): Promise<{ month: string; label: string; net: number }[]> {
-  const out: { month: string; label: string; net: number }[] = []
   const now = new Date()
-  for (let i = 5; i >= 0; i--) {
+  const months = Array.from({ length: 6 }).map((_, idx) => {
+    const i = 5 - idx
     const d = subMonths(now, i)
     const r = monthContaining(d)
-    const w = await getWeeklyReport([farmId], r)
-    out.push({
-      month: r.start,
-      label: format(d, 'MMM').toUpperCase(),
-      net: w.totalRevenue - w.totalExpenses,
+    return { d, r }
+  })
+  const rows = await Promise.all(
+    months.map(async ({ d, r }) => {
+      const w = await getWeeklyReport([farmId], r)
+      return {
+        month: r.start,
+        label: format(d, 'MMM').toUpperCase(),
+        net: w.totalRevenue - w.totalExpenses,
+      }
     })
-  }
-  return out
+  )
+  return rows
 }
 
 async function getProfitLossLastFourMonths(
   farmId: string
 ): Promise<{ month: string; label: string; net: number }[]> {
-  const out: { month: string; label: string; net: number }[] = []
   const now = new Date()
-  for (let i = 3; i >= 0; i--) {
+  const months = Array.from({ length: 4 }).map((_, idx) => {
+    const i = 3 - idx
     const d = subMonths(now, i)
     const r = monthContaining(d)
-    const w = await getWeeklyReport([farmId], r)
-    out.push({
-      month: r.start,
-      label: format(d, 'MMM yyyy'),
-      net: w.netProfit,
+    return { d, r }
+  })
+  const rows = await Promise.all(
+    months.map(async ({ d, r }) => {
+      const w = await getWeeklyReport([farmId], r)
+      return {
+        month: r.start,
+        label: format(d, 'MMM yyyy'),
+        net: w.netProfit,
+      }
     })
-  }
-  return out.reverse()
+  )
+  return rows
 }
 
 async function getTopCustomersWithBalance(

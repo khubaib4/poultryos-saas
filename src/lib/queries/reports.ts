@@ -953,28 +953,53 @@ export async function getFlockPerformanceReport(
     {}
   const rows: FlockPerformanceRow[] = []
 
-  for (const fl of flocks) {
-    const { data: ent } = await supabase
+  const flockIds = flocks.map((f) => f.id)
+  type EntryRow = {
+    flock_id: string
+    date: string
+    eggs_collected?: number | null
+    deaths?: number | null
+    feed_consumed?: number | null
+  }
+
+  const byFlock = new Map<string, EntryRow[]>()
+  if (flockIds.length > 0) {
+    const { data: ent, error } = await supabase
       .from('daily_entries')
-      .select('date, eggs_collected, deaths, feed_consumed')
-      .eq('flock_id', fl.id)
+      .select('flock_id, date, eggs_collected, deaths, feed_consumed')
+      .in('flock_id', flockIds)
       .gte('date', start)
       .lte('date', end)
       .order('date', { ascending: true })
+
+    if (error) {
+      console.error('[getFlockPerformanceReport] daily_entries', error.message)
+    } else {
+      for (const r of (ent ?? []) as EntryRow[]) {
+        const id = String(r.flock_id)
+        const list = byFlock.get(id) ?? []
+        list.push(r)
+        byFlock.set(id, list)
+      }
+    }
+  }
+
+  for (const fl of flocks) {
+    const ent = byFlock.get(fl.id) ?? []
 
     let totalEggs = 0
     let totalDeaths = 0
     let totalFeed = 0
     const series: { date: string; eggs: number; deaths: number }[] = []
-    for (const r of ent ?? []) {
-      const e = Number((r as { eggs_collected: number }).eggs_collected ?? 0)
-      const d = Number((r as { deaths: number }).deaths ?? 0)
-      const f = Number((r as { feed_consumed: number }).feed_consumed ?? 0)
+    for (const r of ent) {
+      const e = Number(r.eggs_collected ?? 0)
+      const d = Number(r.deaths ?? 0)
+      const f = Number(r.feed_consumed ?? 0)
       totalEggs += e
       totalDeaths += d
       totalFeed += f
       series.push({
-        date: (r as { date: string }).date.slice(0, 10),
+        date: String(r.date).slice(0, 10),
         eggs: e,
         deaths: d,
       })
@@ -1035,39 +1060,46 @@ export async function getFarmComparisonReport(
     (farmRows ?? []).map((r) => [(r as { id: string }).id, (r as { name: string }).name])
   )
 
-  const result: {
-    farmId: string
-    farmName: string
-    revenue: number
-    expenses: number
-    eggs: number
-  }[] = []
+  // Weekly stats in parallel
+  const weekly = await Promise.all(
+    farmIds.map(async (fid) => ({ fid, w: await getWeeklyReport([fid], { start, end }) }))
+  )
 
-  for (const fid of farmIds) {
-    const w = await getWeeklyReport([fid], { start, end })
-    const flockIds = await flockIdsForFarmIds([fid])
-    let eggs = 0
-    if (flockIds.length > 0) {
-      const { data: er } = await supabase
-        .from('daily_entries')
-        .select('eggs_collected')
-        .in('flock_id', flockIds)
-        .gte('date', start)
-        .lte('date', end)
+  // Eggs for all farms: flocks -> daily_entries once
+  const flocks = await flockRowsForFarmIds(farmIds)
+  const flockToFarm = new Map(flocks.map((f) => [f.id, f.farm_id]))
+  const allFlockIds = flocks.map((f) => f.id)
+  const eggsByFarm = new Map<string, number>()
+  if (allFlockIds.length > 0) {
+    const { data: er, error } = await supabase
+      .from('daily_entries')
+      .select('flock_id, eggs_collected')
+      .in('flock_id', allFlockIds)
+      .gte('date', start)
+      .lte('date', end)
+
+    if (error) {
+      console.error('[getFarmComparisonReport] daily_entries', error.message)
+    } else {
       for (const r of er ?? []) {
-        eggs += Number((r as { eggs_collected: number }).eggs_collected ?? 0)
+        const row = r as { flock_id: string; eggs_collected?: number | null }
+        const farmId = flockToFarm.get(String(row.flock_id))
+        if (!farmId) continue
+        eggsByFarm.set(
+          farmId,
+          (eggsByFarm.get(farmId) ?? 0) + Number(row.eggs_collected ?? 0)
+        )
       }
     }
-    result.push({
-      farmId: fid,
-      farmName: nameMap.get(fid) ?? fid,
-      revenue: w.totalRevenue,
-      expenses: w.totalExpenses,
-      eggs,
-    })
   }
 
-  return result
+  return weekly.map(({ fid, w }) => ({
+    farmId: fid,
+    farmName: nameMap.get(fid) ?? fid,
+    revenue: w.totalRevenue,
+    expenses: w.totalExpenses,
+    eggs: eggsByFarm.get(fid) ?? 0,
+  }))
 }
 
 // Farm dashboard analytics for the Stitch `/farm/reports` UI live in `reports-analytics.ts`

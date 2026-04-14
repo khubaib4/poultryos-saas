@@ -4,6 +4,18 @@
 
 /* DashStack-inspired design system — tokens in @theme */
 
+/* NProgress (route transitions) */
+#nprogress .bar {
+  background: #22c55e !important;
+  height: 3px !important;
+}
+#nprogress .peg {
+  box-shadow: 0 0 10px #22c55e, 0 0 5px #22c55e !important;
+}
+#nprogress .spinner {
+  display: none !important;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

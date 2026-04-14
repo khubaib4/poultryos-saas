@@ -141,6 +141,7 @@ export function Sidebar({ profile }: SidebarProps) {
       <div className="flex min-h-16 flex-col px-4 pb-2 pt-4">
         <Link
           href={farmHref}
+          prefetch
           className="flex min-h-11 items-start gap-3 rounded-xl px-1 py-1 transition-opacity hover:opacity-90"
         >
           <div
@@ -187,6 +188,7 @@ export function Sidebar({ profile }: SidebarProps) {
               <li key={item.href}>
                 <Link
                   href={linkHref}
+                  prefetch
                   className={cn(
                     'flex min-h-11 items-center gap-3 border-l-[3px] py-3 pl-[13px] pr-3 text-sm font-medium transition-colors',
                     isActive
@@ -213,6 +215,7 @@ export function Sidebar({ profile }: SidebarProps) {
         <div className="px-3 pb-3">
           <Link
             href={buildFarmWorkerHref('/farm/inventory/new', workerFarmQuery)}
+            prefetch
             className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-gradient px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark hover:[background-image:none]"
           >
             <Plus className="h-4 w-4" aria-hidden />
