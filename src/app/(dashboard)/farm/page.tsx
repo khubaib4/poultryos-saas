@@ -5,11 +5,13 @@ import {
   BarChart3,
   Check,
   AlertTriangle,
+  Skull,
+  Bird,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { FarmStatCard } from '@/components/dashboard/FarmStatCard'
+import { ClickableStatCard } from '@/components/dashboard/ClickableStatCard'
 import { EggProductionChart } from '@/components/dashboard/EggProductionChart'
 import { VitalInsights } from '@/components/dashboard/VitalInsights'
 import { UpgradePromo } from '@/components/dashboard/UpgradePromo'
@@ -120,41 +122,48 @@ export default async function FarmDashboard({
       </section>
 
       <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <FarmStatCard
-          icon={<Egg className="h-6 w-6" aria-hidden />}
-          iconBg="blue"
+        <ClickableStatCard
+          icon={<Egg className="h-6 w-6 text-blue-600" aria-hidden />}
+          iconBg="bg-blue-100 text-blue-600"
           label="Total eggs"
           value={pack.eggsWeekTotal.toLocaleString()}
           trend={eggsTrend}
-          decorativeShape
-          shapeTint="blue"
+          farmId={farmId}
+          statType="eggs"
         />
-        <FarmStatCard
-          icon={<Check className="h-6 w-6" aria-hidden strokeWidth={2.5} />}
-          iconBg="green"
-          label="Active flocks"
-          value={pack.stats.active_flocks}
-          trend={{ value: 'Steady', direction: 'steady' }}
+        <ClickableStatCard
+          icon={<Skull className="h-6 w-6 text-red-600" aria-hidden />}
+          iconBg="bg-red-100 text-red-600"
+          label="Total deaths"
+          value={pack.deathsWeekTotal.toLocaleString()}
+          trend={{
+            value:
+              pack.deathsWeekTrendPct == null
+                ? 'Steady'
+                : `${Math.abs(pack.deathsWeekTrendPct).toFixed(1)}% vs last week`,
+            direction: pack.deathsTrendDirection,
+          }}
+          farmId={farmId}
+          statType="deaths"
         />
-        <FarmStatCard
-          icon={<BarChart3 className="h-6 w-6" aria-hidden />}
-          iconBg="green"
+        <ClickableStatCard
+          icon={<BarChart3 className="h-6 w-6 text-emerald-600" aria-hidden />}
+          iconBg="bg-emerald-100 text-emerald-600"
           label="Today's sales"
           value={formatCurrency(pack.salesToday)}
           trend={salesTrend}
+          farmId={farmId}
+          statType="sales"
+          formatValue={(v) => formatCurrency(v)}
         />
-        <FarmStatCard
-          icon={<AlertTriangle className="h-6 w-6" aria-hidden />}
-          iconBg="red"
-          label="Low stock"
-          value={pack.lowStockCount}
-          alert={
-            pack.lowStockCount > 0
-              ? `! ${pack.lowStockCount} item${pack.lowStockCount === 1 ? '' : 's'}`
-              : undefined
-          }
-          decorativeShape={pack.lowStockCount > 0}
-          shapeTint="red"
+        <ClickableStatCard
+          icon={<Bird className="h-6 w-6 text-purple-600" aria-hidden />}
+          iconBg="bg-purple-100 text-purple-600"
+          label="Live birds"
+          value={pack.liveBirdsCount.toLocaleString()}
+          trend={{ value: 'Real-time count', direction: 'steady' }}
+          farmId={farmId}
+          statType="birds"
         />
       </section>
 

@@ -5,8 +5,18 @@ import {
   getOverdueVaccinations,
   getUpcomingVaccinations,
 } from '@/lib/queries/vaccinations'
+import { format, startOfWeek, subDays } from 'date-fns'
 
 const WEEKDAY_LABELS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const
+
+export type TrendPeriod = '1w' | '1m' | '3m' | '6m'
+
+function periodDays(period: TrendPeriod): number {
+  if (period === '1m') return 30
+  if (period === '3m') return 90
+  if (period === '6m') return 180
+  return 7
+}
 
 function isoDate(d: Date): string {
   const y = d.getFullYear()
@@ -27,6 +37,211 @@ function mondayOfWeek(d = new Date()): Date {
 function addDays(d: Date, n: number): Date {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
   return x
+}
+
+// ─────────────────────────────────────────────────────────────
+// New dashboard stats + trend queries
+// ─────────────────────────────────────────────────────────────
+
+export async function getTotalDeaths(
+  farmId: string,
+  from?: Date,
+  to?: Date
+): Promise<number> {
+  const supabase = await createClient()
+  const fromDate = from ?? startOfWeek(new Date(), { weekStartsOn: 1 })
+  const toDate = to ?? new Date()
+  const fromIso = format(fromDate, 'yyyy-MM-dd')
+  const toIso = format(toDate, 'yyyy-MM-dd')
+
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('date, deaths')
+    .eq('farm_id', farmId)
+    .gte('date', fromIso)
+    .lte('date', toIso)
+
+  if (error) {
+    console.error('[getTotalDeaths]', error.message)
+    return 0
+  }
+  return (data ?? []).reduce(
+    (sum, r) => sum + Number((r as { deaths?: number | null }).deaths ?? 0),
+    0
+  )
+}
+
+export async function getLiveBirdsCount(farmId: string): Promise<number> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('flocks')
+    .select('current_count')
+    .eq('farm_id', farmId)
+    .eq('status', 'active')
+
+  if (error) {
+    console.error('[getLiveBirdsCount]', error.message)
+    return 0
+  }
+  return (data ?? []).reduce(
+    (sum, r) =>
+      sum + Number((r as { current_count?: number | null }).current_count ?? 0),
+    0
+  )
+}
+
+function groupByIsoDay<T extends { date: string }>(
+  rows: T[],
+  pick: (row: T) => number
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const r of rows) {
+    const d = String(r.date).slice(0, 10)
+    if (!d) continue
+    out[d] = (out[d] ?? 0) + pick(r)
+  }
+  return out
+}
+
+function buildRangeDays(days: number): string[] {
+  const out: string[] = []
+  const end = new Date()
+  for (let i = days - 1; i >= 0; i--) {
+    out.push(format(subDays(end, i), 'yyyy-MM-dd'))
+  }
+  return out
+}
+
+export async function getDeathsTrend(
+  farmId: string,
+  period: TrendPeriod
+): Promise<{ date: string; value: number }[]> {
+  const supabase = await createClient()
+  const days = periodDays(period)
+  const fromIso = format(subDays(new Date(), days - 1), 'yyyy-MM-dd')
+
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('date, deaths')
+    .eq('farm_id', farmId)
+    .gte('date', fromIso)
+    .order('date', { ascending: true })
+
+  if (error) {
+    console.error('[getDeathsTrend]', error.message)
+    return []
+  }
+  const grouped = groupByIsoDay(
+    (data ?? []) as { date: string; deaths?: number | null }[],
+    (r) => Number((r as { deaths?: number | null }).deaths ?? 0)
+  )
+  return buildRangeDays(days).map((date) => ({
+    date,
+    value: grouped[date] ?? 0,
+  }))
+}
+
+export async function getEggsTrend(
+  farmId: string,
+  period: TrendPeriod
+): Promise<{ date: string; value: number }[]> {
+  const supabase = await createClient()
+  const days = periodDays(period)
+  const fromIso = format(subDays(new Date(), days - 1), 'yyyy-MM-dd')
+
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('date, eggs_collected')
+    .eq('farm_id', farmId)
+    .gte('date', fromIso)
+    .order('date', { ascending: true })
+
+  if (error) {
+    console.error('[getEggsTrend]', error.message)
+    return []
+  }
+  const grouped = groupByIsoDay(
+    (data ?? []) as { date: string; eggs_collected?: number | null }[],
+    (r) => Number((r as { eggs_collected?: number | null }).eggs_collected ?? 0)
+  )
+  return buildRangeDays(days).map((date) => ({
+    date,
+    value: grouped[date] ?? 0,
+  }))
+}
+
+export async function getSalesTrend(
+  farmId: string,
+  period: TrendPeriod
+): Promise<{ date: string; value: number }[]> {
+  const supabase = await createClient()
+  const days = periodDays(period)
+  const fromIso = format(subDays(new Date(), days - 1), 'yyyy-MM-dd')
+
+  const { data, error } = await supabase
+    .from('sales')
+    .select('sale_date, total_amount, amount')
+    .eq('farm_id', farmId)
+    .gte('sale_date', fromIso)
+    .order('sale_date', { ascending: true })
+
+  if (error) {
+    console.error('[getSalesTrend]', error.message)
+    return []
+  }
+
+  const grouped: Record<string, number> = {}
+  for (const r of data ?? []) {
+    const d = String((r as { sale_date?: string | null }).sale_date ?? '').slice(0, 10)
+    if (!d) continue
+    const row = r as { total_amount?: number | null; amount?: number | null }
+    grouped[d] = (grouped[d] ?? 0) + Number(row.total_amount ?? row.amount ?? 0)
+  }
+
+  return buildRangeDays(days).map((date) => ({
+    date,
+    value: grouped[date] ?? 0,
+  }))
+}
+
+export async function getLiveBirdsTrend(
+  farmId: string,
+  period: TrendPeriod
+): Promise<{ date: string; value: number }[]> {
+  const supabase = await createClient()
+  const days = periodDays(period)
+  const fromIso = format(subDays(new Date(), days - 1), 'yyyy-MM-dd')
+
+  // Current total (active flocks)
+  const currentTotal = await getLiveBirdsCount(farmId)
+
+  // Deaths per day in window (for working backwards)
+  const { data, error } = await supabase
+    .from('daily_entries')
+    .select('date, deaths')
+    .eq('farm_id', farmId)
+    .gte('date', fromIso)
+    .order('date', { ascending: false })
+
+  if (error) {
+    console.error('[getLiveBirdsTrend] daily_entries', error.message)
+  }
+
+  const deathsByDate = groupByIsoDay(
+    (data ?? []) as { date: string; deaths?: number | null }[],
+    (r) => Number((r as { deaths?: number | null }).deaths ?? 0)
+  )
+
+  let running = currentTotal
+  const trend: { date: string; value: number }[] = []
+  const daysList = buildRangeDays(days)
+  for (let i = daysList.length - 1; i >= 0; i--) {
+    const date = daysList[i]!
+    trend.unshift({ date, value: running })
+    // Add back deaths to estimate previous day live birds
+    running += deathsByDate[date] ?? 0
+  }
+  return trend
 }
 
 export interface FarmWeeklyEggPoint {
@@ -261,11 +476,15 @@ export interface FarmDashboardPack {
   stats: Awaited<ReturnType<typeof getFarmStats>>
   weeklyEggs: FarmWeeklyEggPoint[]
   eggsWeekTotal: number
+  deathsWeekTotal: number
   eggsWeekTrendPct: number | null
   eggsTrendDirection: 'up' | 'down' | 'steady'
+  deathsWeekTrendPct: number | null
+  deathsTrendDirection: 'up' | 'down' | 'steady'
   salesToday: number
   salesTrendPct: number | null
   salesTrendDirection: 'up' | 'down' | 'steady'
+  liveBirdsCount: number
   lowStockCount: number
   vitalInsights: FarmDashboardVitalInsight[]
 }
@@ -291,8 +510,11 @@ export async function getFarmDashboardPack(
     weeklyEggs,
     eggsThisWeek,
     eggsPrevWeek,
+    deathsThisWeek,
+    deathsPrevWeek,
     salesToday,
     salesYesterday,
+    liveBirdsCount,
     invSummary,
     avg7,
   ] = await Promise.all([
@@ -300,19 +522,31 @@ export async function getFarmDashboardPack(
     getFarmCurrentWeekEggSeries(farmId),
     sumEggsInRange(farmId, thisStart, thisEnd),
     sumEggsInRange(farmId, prevStart, prevEnd),
+    getTotalDeaths(farmId, new Date(thisStart + 'T12:00:00'), new Date(thisEnd + 'T12:00:00')),
+    getTotalDeaths(farmId, new Date(prevStart + 'T12:00:00'), new Date(prevEnd + 'T12:00:00')),
     sumSalesOnDate(farmId, today),
     sumSalesOnDate(farmId, yesterday),
+    getLiveBirdsCount(farmId),
     getInventorySummary(farmId),
     avgEggsLastNDays(farmId, 7, true),
   ])
 
   const eggsWeekTrendPct = pctChange(eggsThisWeek, eggsPrevWeek)
   const salesTrendPct = pctChange(salesToday, salesYesterday)
+  const deathsWeekTrendPct = pctChange(deathsThisWeek, deathsPrevWeek)
 
   const eggsTrendDirection: 'up' | 'down' | 'steady' =
     eggsWeekTrendPct == null || Math.abs(eggsWeekTrendPct) < 0.5
       ? 'steady'
       : eggsWeekTrendPct > 0
+        ? 'up'
+        : 'down'
+
+  // For deaths, lower is better; treat higher deaths as “down”
+  const deathsTrendDirection: 'up' | 'down' | 'steady' =
+    deathsWeekTrendPct == null || Math.abs(deathsWeekTrendPct) < 0.5
+      ? 'steady'
+      : deathsWeekTrendPct <= 0
         ? 'up'
         : 'down'
 
@@ -333,13 +567,16 @@ export async function getFarmDashboardPack(
     stats,
     weeklyEggs,
     eggsWeekTotal: eggsThisWeek,
+    deathsWeekTotal: deathsThisWeek,
     eggsWeekTrendPct,
     eggsTrendDirection,
+    deathsWeekTrendPct,
+    deathsTrendDirection,
     salesToday,
     salesTrendPct,
     salesTrendDirection,
-    lowStockCount:
-      invSummary.lowStockCount + invSummary.outOfStockCount,
+    liveBirdsCount,
+    lowStockCount: invSummary.lowStockCount + invSummary.outOfStockCount,
     vitalInsights,
   }
 }
