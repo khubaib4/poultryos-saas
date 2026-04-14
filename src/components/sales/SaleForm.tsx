@@ -3,7 +3,15 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  FileText,
+  Loader2,
+  Sparkles,
+  User,
+  Wallet,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,18 +28,17 @@ import { withFarmQuery } from '@/lib/farm-worker-nav'
 import { useOfflineOptional } from '@/components/providers/OfflineProvider'
 import { createOfflineSale, updateOfflineSale } from '@/lib/offline/offlineCrud'
 import { computeSaleTotals, lineItemTotal, roundMoney, type DiscountType } from '@/lib/sale-utils'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { Customer, Sale, SaleLineItem } from '@/types/database'
 import { CustomerPicker } from './CustomerPicker'
+import { LineItemsEditor } from '@/components/sales/LineItemsEditor'
+import { FinancialSummary } from '@/components/sales/FinancialSummary'
+import type { SaleEggCategoryOption } from '@/components/sales/egg-sale-types'
 
 const OTHER = 'Other' as const
 
-export type SaleEggCategoryOption = {
-  id: string
-  name: string
-  default_price: number
-}
+export type { SaleEggCategoryOption }
 
 function emptyLine(categories: SaleEggCategoryOption[]): SaleLineItem {
   const first = categories[0]
@@ -73,7 +80,17 @@ interface SaleFormProps {
   initialSale?: Sale
   /** Active egg categories for this farm (drives line item type dropdown). */
   eggCategories: SaleEggCategoryOption[]
+  /** Next invoice number preview (create mode). */
+  suggestedInvoiceNumber?: string
 }
+
+const PAYMENT_METHOD_OPTIONS = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'bank_transfer', label: 'Bank Transfer (HBL)' },
+  { value: 'cheque', label: 'Cheque' },
+  { value: 'jazzcash', label: 'JazzCash' },
+  { value: 'easypaisa', label: 'Easypaisa' },
+] as const
 
 export function SaleForm({
   farmId,
@@ -81,6 +98,7 @@ export function SaleForm({
   mode,
   initialSale,
   eggCategories: eggCategoriesProp,
+  suggestedInvoiceNumber,
 }: SaleFormProps) {
   const router = useRouter()
   const offline = useOfflineOptional()
@@ -156,6 +174,7 @@ export function SaleForm({
     mode === 'create' ? '0' : String(initialSale?.paid_amount ?? 0)
   )
   const [notes, setNotes] = useState(initialSale?.notes ?? '')
+  const [paymentMethod, setPaymentMethod] = useState('bank_transfer')
 
   const { subtotal, discountAmount, total } = useMemo(() => {
     const dv = parseFloat(discountValue) || 0
@@ -171,6 +190,20 @@ export function SaleForm({
 
   const paidNum = parseFloat(initialPaid) || 0
   const balanceDue = roundMoney(Math.max(0, total - paidNum))
+
+  const paymentPill = useMemo<'paid' | 'partial' | 'unpaid'>(() => {
+    if (total <= 0) return 'unpaid'
+    if (paidNum <= 0) return 'unpaid'
+    if (paidNum >= total - 0.009) return 'paid'
+    return 'partial'
+  }, [paidNum, total])
+
+  const discountLabel =
+    discountType === 'percentage' && (parseFloat(discountValue) || 0) > 0
+      ? `Discount (${parseFloat(discountValue) || 0}%)`
+      : discountType === 'fixed' && (parseFloat(discountValue) || 0) > 0
+        ? 'Discount (fixed)'
+        : 'Discount'
 
   const categoryOptions = useMemo(
     () => lineOptions(eggCategories, lines),
@@ -215,6 +248,34 @@ export function SaleForm({
     })
   }
 
+  function saveDraft() {
+    try {
+      const draft = {
+        customerId,
+        saleDate,
+        dueDate,
+        lines,
+        discountType,
+        discountValue,
+        initialPaid,
+        notes,
+        paymentMethod,
+      }
+      localStorage.setItem(
+        `poultryos-sale-draft-${farmId}`,
+        JSON.stringify(draft)
+      )
+      toast.success('Draft saved on this device.')
+    } catch {
+      toast.error('Could not save draft.')
+    }
+  }
+
+  function setPaymentPill(kind: 'paid' | 'partial' | 'unpaid') {
+    if (kind === 'paid') setInitialPaid(String(roundMoney(total)))
+    else if (kind === 'unpaid') setInitialPaid('0')
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const dv = parseFloat(discountValue) || 0
@@ -253,13 +314,19 @@ export function SaleForm({
           return
         }
         if (!isOnline) {
-          await createOfflineSale(payload)
+          await createOfflineSale({
+            ...payload,
+            initial_payment_method: paymentMethod,
+          })
           toast.success('Sale saved offline. Will sync when connected.')
           await offline?.refreshPending()
           router.push(`/farm/sales?farm=${encodeURIComponent(farmId)}`)
           return
         }
-        const result = await createSaleAction(payload)
+        const result = await createSaleAction({
+          ...payload,
+          initial_payment_method: paymentMethod,
+        })
         if ('error' in result) {
           toast.error(result.error)
           return
@@ -293,289 +360,358 @@ export function SaleForm({
     })
   }
 
+  const listPath = withFarmQuery('/farm/sales', farmId)
+  const invoicePreview =
+    mode === 'create'
+      ? suggestedInvoiceNumber ?? '—'
+      : initialSale?.invoice_number ?? '—'
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 max-w-4xl">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Customer</Label>
-            <CustomerPicker
-              customers={customers}
-              value={customerId}
-              onChange={setCustomerId}
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href={listPath}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
+            aria-label="Back to sales"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h2 className="text-xl font-semibold text-primary sm:text-2xl">
+            {mode === 'create' ? 'New Sale' : 'Edit Sale'}
+          </h2>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {mode === 'create' && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-gray-600"
+              onClick={saveDraft}
               disabled={isPending}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="sale_date">Sale date</Label>
-              <Input
-                id="sale_date"
-                type="date"
-                value={saleDate}
-                onChange={(e) => setSaleDate(e.target.value)}
-                disabled={isPending}
-                required
-              />
+            >
+              Save as Draft
+            </Button>
+          )}
+          <Button type="submit" variant="primarySimple" className="gap-2" disabled={isPending}>
+            {isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Check className="h-4 w-4" />
+                {mode === 'create' ? 'Create Invoice' : 'Save changes'}
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_380px] lg:items-start">
+        <div className="space-y-6">
+          <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-black/[0.04]">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              Customer Selection
+            </p>
+            <div className="mt-3 flex items-start gap-2">
+              <div className="mt-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-lighter text-primary">
+                <User className="h-4 w-4" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <CustomerPicker
+                  customers={customers}
+                  value={customerId}
+                  onChange={setCustomerId}
+                  disabled={isPending}
+                  placeholder="Select a customer..."
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="due_date">Due date</Label>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Invoice ID
+                </Label>
+                <Input
+                  readOnly
+                  value={invoicePreview}
+                  className="h-10 rounded-lg bg-gray-50 font-medium"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label
+                  htmlFor="sale_date"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-gray-500"
+                >
+                  Issue Date
+                </Label>
+                <Input
+                  id="sale_date"
+                  type="date"
+                  value={saleDate}
+                  onChange={(e) => setSaleDate(e.target.value)}
+                  disabled={isPending}
+                  required
+                  className="h-10 rounded-lg"
+                />
+              </div>
+            </div>
+            <div className="mt-4 space-y-2">
+              <Label
+                htmlFor="due_date"
+                className="text-[11px] font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Due date
+              </Label>
               <Input
                 id="due_date"
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 disabled={isPending}
+                className="h-10 max-w-xs rounded-lg"
               />
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-black/[0.04]">
+            <LineItemsEditor
+              farmId={farmId}
+              lines={lines}
+              categoryOptions={categoryOptions}
+              eggCategories={eggCategories}
+              categoriesLoading={categoriesLoading}
+              categoriesError={categoriesError}
+              isPending={isPending}
+              onAddLine={addLine}
+              onRemoveLine={removeLine}
+              onApplyTypeChange={applyTypeChange}
+              onUpdateLine={updateLine}
+            />
+            <div className="mt-6 flex flex-col gap-4 border-t border-gray-100 pt-6 sm:flex-row sm:items-end sm:justify-between">
+              <div className="space-y-2">
+                <Label className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Global discount
+                </Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={discountType}
+                    onValueChange={(v) =>
+                      v && setDiscountType(v as DiscountType | 'none')
+                    }
+                    disabled={isPending}
+                  >
+                    <SelectTrigger className="h-10 w-[140px] rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="percentage">Percentage</SelectItem>
+                      <SelectItem value="fixed">Fixed (Rs)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {discountType !== 'none' && (
+                    <div className="relative">
+                      <Input
+                        id="disc_val"
+                        type="number"
+                        min={0}
+                        step={discountType === 'percentage' ? '1' : '0.01'}
+                        max={discountType === 'percentage' ? 100 : undefined}
+                        value={discountValue}
+                        onChange={(e) => setDiscountValue(e.target.value)}
+                        disabled={isPending}
+                        className="h-10 w-32 rounded-lg pr-8"
+                      />
+                      {discountType === 'percentage' && (
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+                          %
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Subtotal Amount
+                </p>
+                <p className="mt-1 text-2xl font-bold text-gray-900 tabular-nums">
+                  {formatCurrency(subtotal)}
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="rounded-xl border bg-gray-50/80 p-4 space-y-2 text-sm">
-          <p className="font-medium text-gray-900">Summary</p>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Subtotal</span>
-            <span>PKR {subtotal.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Discount</span>
-            <span>PKR {discountAmount.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between font-semibold text-base border-t pt-2">
-            <span>Total</span>
-            <span>PKR {total.toLocaleString()}</span>
-          </div>
-          {mode === 'create' && (
-            <>
-              <div className="space-y-1 pt-2">
-                <Label htmlFor="initial_paid">Amount paid (now)</Label>
-                <Input
-                  id="initial_paid"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={initialPaid}
-                  onChange={(e) => setInitialPaid(e.target.value)}
-                  disabled={isPending}
-                />
+        <div className="space-y-6">
+          <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-black/[0.04]">
+            <div className="flex items-center gap-2 text-gray-900">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-lighter text-primary">
+                <Wallet className="h-4 w-4" aria-hidden />
               </div>
-              <div className="flex justify-between text-amber-800 font-medium">
-                <span>Balance due</span>
-                <span>PKR {balanceDue.toLocaleString()}</span>
-              </div>
-            </>
-          )}
-          {mode === 'edit' && (
-            <p className="text-xs text-gray-500 pt-2">
-              Additional payments are recorded from the sale detail page.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Label className="text-base">Line items</Label>
-            {categoriesLoading && (
-              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Loading categories…
-              </span>
+              <p className="text-[11px] font-semibold uppercase tracking-wider">
+                Payment Info
+              </p>
+            </div>
+            {mode === 'create' && (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(
+                    [
+                      ['partial', 'Partial'],
+                      ['paid', 'Paid'],
+                      ['unpaid', 'Unpaid'],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setPaymentPill(k)}
+                      className={cn(
+                        'h-9 rounded-full px-4 text-sm font-semibold transition-colors',
+                        paymentPill === k
+                          ? k === 'partial'
+                            ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200'
+                            : k === 'paid'
+                              ? 'bg-green-100 text-green-800 ring-1 ring-green-200'
+                              : 'bg-red-100 text-red-800 ring-1 ring-red-200'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 space-y-2">
+                  <Label htmlFor="initial_paid">Amount Received (Rs)</Label>
+                  <Input
+                    id="initial_paid"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={initialPaid}
+                    onChange={(e) => setInitialPaid(e.target.value)}
+                    disabled={isPending}
+                    className="h-10 rounded-lg"
+                  />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <Label>Payment Method</Label>
+                  <Select
+                    value={paymentMethod}
+                    onValueChange={(v) => v && setPaymentMethod(v)}
+                    disabled={isPending}
+                    items={PAYMENT_METHOD_OPTIONS.reduce<Record<string, string>>(
+                      (acc, m) => {
+                        acc[m.value] = m.label
+                        return acc
+                      },
+                      {}
+                    )}
+                  >
+                    <SelectTrigger className="h-10 rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_METHOD_OPTIONS.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+            {mode === 'edit' && (
+              <p className="mt-3 text-sm text-gray-500">
+                Record additional payments from the invoice detail page.
+              </p>
             )}
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addLine}
-            disabled={isPending}
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add item
-          </Button>
-        </div>
-        {categoriesError && (
-          <p className="text-sm text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-            Could not load egg categories: {categoriesError}
-          </p>
-        )}
-        {!categoriesLoading && eggCategories.length === 0 && (
-          <p className="text-sm text-muted-foreground rounded-lg border border-dashed px-3 py-2">
-            No egg categories. Add them in{' '}
-            <Link
-              href={withFarmQuery('/farm/settings', farmId)}
-              className="font-medium text-primary-dark underline underline-offset-2 hover:text-primary-dark"
-            >
-              Settings
-            </Link>
-            .
-          </p>
-        )}
-        <div className="rounded-xl border overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-left">
-                <th className="p-2 font-medium">Type</th>
-                <th className="p-2 font-medium">Qty</th>
-                <th className="p-2 font-medium">Unit (PKR)</th>
-                <th className="p-2 font-medium text-right">Line total</th>
-                <th className="p-2 w-10" />
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, i) => (
-                <tr key={i} className="border-b last:border-0">
-                  <td className="p-2 align-top">
-                    <Select
-                      value={line.type}
-                      onValueChange={(v) => v && applyTypeChange(i, v)}
-                      disabled={isPending}
-                    >
-                      <SelectTrigger className="h-8 min-w-[180px] max-w-[260px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categoryOptions.map((c) => (
-                          <SelectItem key={c.id} value={c.name}>
-                            {`${c.name} — default PKR ${Number(c.default_price).toLocaleString()}`}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={OTHER}>Other (manual)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="p-2 align-top w-24">
-                    <Input
-                      type="number"
-                      min={0}
-                      step="1"
-                      className="h-8"
-                      value={line.quantity || ''}
-                      onChange={(e) =>
-                        updateLine(i, { quantity: parseFloat(e.target.value) || 0 })
-                      }
-                      disabled={isPending}
-                    />
-                  </td>
-                  <td className="p-2 align-top w-28">
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="h-8"
-                      value={line.unit_price || ''}
-                      onChange={(e) =>
-                        updateLine(i, {
-                          unit_price: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      disabled={isPending}
-                    />
-                  </td>
-                  <td className="p-2 align-top text-right font-medium">
-                    PKR {lineItemTotal(line).toLocaleString()}
-                  </td>
-                  <td className="p-2 align-top">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="h-8 w-8 text-red-600"
-                      onClick={() => removeLine(i)}
-                      disabled={isPending || lines.length <= 1}
-                      aria-label="Remove line"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 max-w-md">
-        <div className="space-y-2">
-          <Label>Discount</Label>
-          <Select
-            value={discountType}
-            onValueChange={(v) =>
-              v && setDiscountType(v as DiscountType | 'none')
-            }
-            disabled={isPending}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">None</SelectItem>
-              <SelectItem value="percentage">Percentage</SelectItem>
-              <SelectItem value="fixed">Fixed (PKR)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {discountType !== 'none' && (
-          <div className="space-y-2">
-            <Label htmlFor="disc_val">
-              {discountType === 'percentage' ? 'Percent %' : 'Amount (PKR)'}
-            </Label>
-            <Input
-              id="disc_val"
-              type="number"
-              min={0}
-              step={discountType === 'percentage' ? '1' : '0.01'}
-              max={discountType === 'percentage' ? 100 : undefined}
-              value={discountValue}
-              onChange={(e) => setDiscountValue(e.target.value)}
+          <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-black/[0.04]">
+            <div className="flex items-center gap-2 text-gray-900">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
+                <FileText className="h-4 w-4" aria-hidden />
+              </div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider">
+                Invoice Notes
+              </p>
+            </div>
+            <textarea
+              id="notes"
+              rows={4}
               disabled={isPending}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className={cn(
+                'mt-3 flex min-h-[100px] w-full rounded-xl border border-input bg-transparent px-3 py-2.5 text-sm',
+                'outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary'
+              )}
+              placeholder="Terms of service, delivery details, or special instructions..."
             />
           </div>
-        )}
-      </div>
 
-      <div className="space-y-2 max-w-xl">
-        <Label htmlFor="notes">Notes</Label>
-        <textarea
-          id="notes"
-          rows={3}
-          disabled={isPending}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className={cn(
-            'flex w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm',
-            'outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
-          )}
-          placeholder="Optional"
-        />
-      </div>
+          <FinancialSummary
+            subtotal={subtotal}
+            discountAmount={discountAmount}
+            discountLabel={discountLabel}
+            total={total}
+            paid={
+              mode === 'edit'
+                ? Number(initialSale?.paid_amount ?? 0)
+                : paidNum
+            }
+            balanceDue={
+              mode === 'edit'
+                ? roundMoney(
+                    Math.max(
+                      0,
+                      total - Number(initialSale?.paid_amount ?? 0)
+                    )
+                  )
+                : balanceDue
+            }
+          />
 
-      <div className="flex flex-wrap gap-3">
-        <Button
-          type="submit"
-          className="bg-primary hover:bg-primary-dark"
-          disabled={isPending}
-        >
-          {isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving…
-            </>
-          ) : mode === 'create' ? (
-            'Save sale'
-          ) : (
-            'Save changes'
+          <Link
+            href={
+              customerId
+                ? withFarmQuery(`/farm/customers/${customerId}`, farmId)
+                : listPath
+            }
+            className="relative block overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-700 p-5 text-white shadow-card-md ring-1 ring-black/10"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/40 via-slate-900/50 to-slate-900 opacity-90" />
+            <div className="relative flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold">View Customer Credit History</span>
+              <Sparkles className="h-5 w-5 shrink-0 text-primary-light" aria-hidden />
+            </div>
+          </Link>
+
+          {mode === 'edit' && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  router.push(
+                    initialSale
+                      ? `/farm/sales/${initialSale.id}?farm=${encodeURIComponent(farmId)}`
+                      : listPath
+                  )
+                }
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+            </div>
           )}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.push(`/farm/sales?farm=${encodeURIComponent(farmId)}`)}
-          disabled={isPending}
-        >
-          Cancel
-        </Button>
+        </div>
       </div>
     </form>
   )

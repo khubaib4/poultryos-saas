@@ -100,58 +100,66 @@ export function ReduceStockModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>Reduce stock</DialogTitle>
-            <DialogDescription>
-              {itemName} — current: {max}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="reduce-qty">Quantity to reduce (max {max})</Label>
-              <Input
-                id="reduce-qty"
-                type="number"
-                step="0.01"
-                min="0.01"
-                max={max > 0 ? max : undefined}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                disabled={max <= 0}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Reason (required)</Label>
-              <Select
-                value={reason}
-                onValueChange={(v) => setReason(v ?? REDUCE_STOCK_REASONS[0])}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REDUCE_STOCK_REASONS.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <DialogContent className="gap-0 rounded-2xl border-gray-200 p-0 sm:max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col">
+          <div className="p-6">
+            <DialogHeader className="space-y-1 text-left">
+              <DialogTitle className="text-lg font-semibold">Reduce stock</DialogTitle>
+              <DialogDescription className="text-sm text-gray-500">
+                {itemName} — current: {max}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-5">
+              <div className="space-y-2">
+                <Label htmlFor="reduce-qty">Quantity to reduce (max {max})</Label>
+                <Input
+                  id="reduce-qty"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={max > 0 ? max : undefined}
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  disabled={max <= 0}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Reason (required)</Label>
+                <Select
+                  value={reason}
+                  onValueChange={(v) => setReason(v ?? REDUCE_STOCK_REASONS[0])}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REDUCE_STOCK_REASONS.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 border-t border-gray-100 bg-gray-50/80 px-6 py-4 sm:justify-end">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={isPending}
+              className="rounded-xl"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending || max <= 0} variant="secondary">
+            <Button
+              type="submit"
+              disabled={isPending || max <= 0}
+              variant="secondary"
+              className="rounded-xl"
+            >
               {isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

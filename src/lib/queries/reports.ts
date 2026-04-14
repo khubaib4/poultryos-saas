@@ -1069,3 +1069,6 @@ export async function getFarmComparisonReport(
 
   return result
 }
+
+// Farm dashboard analytics for the Stitch `/farm/reports` UI live in `reports-analytics.ts`
+// (e.g. `getOverviewStats`, `getFinancialDashboardData`, `getProductionIntelligence`).

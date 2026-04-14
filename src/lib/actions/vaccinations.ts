@@ -30,6 +30,7 @@ export type VaccinationFormPayload = {
   scheduled_date: string
   dosage?: string | null
   method?: string | null
+  administered_by?: string | null
   notes?: string | null
 }
 
@@ -70,6 +71,7 @@ export async function createVaccinationAction(
       status: 'scheduled',
       dosage: data.dosage?.trim() || null,
       method: data.method?.trim() || null,
+      administered_by: data.administered_by?.trim() || null,
       notes: data.notes?.trim() || null,
       updated_at: new Date().toISOString(),
     })
@@ -120,6 +122,7 @@ export async function updateVaccinationAction(
       scheduled_date: data.scheduled_date.slice(0, 10),
       dosage: data.dosage?.trim() || null,
       method: data.method?.trim() || null,
+      administered_by: data.administered_by?.trim() || null,
       notes: data.notes?.trim() || null,
       updated_at: new Date().toISOString(),
     })

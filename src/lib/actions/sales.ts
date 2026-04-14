@@ -40,6 +40,8 @@ export type SaleFormPayload = {
   discount_value: number
   /** Only used when creating a sale */
   initial_paid?: number
+  /** Payment method for the initial payment row (defaults to cash). */
+  initial_payment_method?: string
   notes: string | null
 }
 
@@ -140,11 +142,13 @@ export async function createSaleAction(
 
     if (!error && row) {
       if (initialPaid > 0) {
+        const method =
+          (data.initial_payment_method ?? 'cash').trim() || 'cash'
         await supabase.from('payments').insert({
           sale_id: row.id,
           amount: initialPaid,
           payment_date: data.sale_date,
-          payment_method: 'cash',
+          payment_method: method,
           notes: 'Initial payment at sale',
         })
         await refreshSalePaymentAggregate(row.id)

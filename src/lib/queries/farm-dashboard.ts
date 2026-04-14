@@ -338,7 +338,8 @@ export async function getFarmDashboardPack(
     salesToday,
     salesTrendPct,
     salesTrendDirection,
-    lowStockCount: invSummary.lowStockCount,
+    lowStockCount:
+      invSummary.lowStockCount + invSummary.outOfStockCount,
     vitalInsights,
   }
 }

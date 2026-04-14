@@ -6,7 +6,10 @@ export interface SalesFilters {
   dateTo?: string
   customerId?: string
   paymentStatus?: 'all' | 'paid' | 'partial' | 'unpaid'
+  /** Case-insensitive partial match on invoice_number */
+  invoiceSearch?: string
   limit?: number
+  offset?: number
 }
 
 export interface SalesSummary {
@@ -44,7 +47,7 @@ export async function fetchCustomersByIds(
 
   const { data, error } = await supabase
     .from('customers')
-    .select('id, name, phone, business_name')
+    .select('id, name, phone, business_name, category, address')
     .in('id', unique)
 
   if (error) {
@@ -109,7 +112,15 @@ export async function getSales(
   if (filters?.paymentStatus && filters.paymentStatus !== 'all') {
     q = q.eq('payment_status', filters.paymentStatus)
   }
-  if (filters?.limit) {
+  if (filters?.invoiceSearch?.trim()) {
+    const raw = filters.invoiceSearch.trim()
+    q = q.ilike('invoice_number', `%${raw}%`)
+  }
+  if (filters?.offset != null && filters?.limit) {
+    const from = filters.offset
+    const to = filters.offset + filters.limit - 1
+    q = q.range(from, to)
+  } else if (filters?.limit) {
     q = q.limit(filters.limit)
   }
 
@@ -132,6 +143,43 @@ export async function getSales(
       ? customerMap.get(row.customer_id as string)
       : undefined,
   })) as Sale[]
+}
+
+/** Count sales matching the same filters as getSales (for pagination). */
+export async function getSalesCount(
+  farmId: string,
+  filters?: Omit<SalesFilters, 'limit' | 'offset'>
+): Promise<number> {
+  const supabase = await createClient()
+
+  let q = supabase
+    .from('sales')
+    .select('id', { count: 'exact', head: true })
+    .eq('farm_id', farmId)
+
+  if (filters?.dateFrom) {
+    q = q.gte('sale_date', filters.dateFrom)
+  }
+  if (filters?.dateTo) {
+    q = q.lte('sale_date', filters.dateTo)
+  }
+  if (filters?.customerId) {
+    q = q.eq('customer_id', filters.customerId)
+  }
+  if (filters?.paymentStatus && filters.paymentStatus !== 'all') {
+    q = q.eq('payment_status', filters.paymentStatus)
+  }
+  if (filters?.invoiceSearch?.trim()) {
+    const raw = filters.invoiceSearch.trim()
+    q = q.ilike('invoice_number', `%${raw}%`)
+  }
+
+  const { count, error } = await q
+  if (error) {
+    console.error('[getSalesCount]', error.message)
+    return 0
+  }
+  return count ?? 0
 }
 
 export interface SaleDetail extends Sale {

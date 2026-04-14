@@ -3,7 +3,7 @@ import { Syringe } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { VaccinationForm } from '@/components/vaccinations/VaccinationForm'
+import { VaccinationScheduleForm } from '@/components/vaccinations/VaccinationScheduleForm'
 import { getSessionProfile } from '@/lib/auth/session'
 import {
   getAssignedFarms,
@@ -50,7 +50,7 @@ export default async function NewVaccinationPage({ searchParams }: PageProps) {
           </Link>
         }
       />
-      <VaccinationForm farmId={farmId} flocks={flocks} />
+      <VaccinationScheduleForm farmId={farmId} flocks={flocks} variant="page" />
     </div>
   )
 }

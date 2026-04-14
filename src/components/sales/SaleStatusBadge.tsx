@@ -8,9 +8,9 @@ const STATUS_CLASS: Record<string, string> = {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  paid: 'Paid',
-  partial: 'Partial',
-  unpaid: 'Unpaid',
+  paid: 'PAID',
+  partial: 'PARTIAL',
+  unpaid: 'UNPAID',
 }
 
 interface SaleStatusBadgeProps {

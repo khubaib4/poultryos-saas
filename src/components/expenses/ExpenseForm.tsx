@@ -20,6 +20,10 @@ import { createExpenseAction, updateExpenseAction } from '@/lib/actions/expenses
 import { useOfflineOptional } from '@/components/providers/OfflineProvider'
 import { createOfflineExpense, updateOfflineExpense } from '@/lib/offline/offlineCrud'
 import { EXPENSE_CATEGORIES } from '@/lib/expense-categories'
+import {
+  categoryIcons,
+  resolveExpenseCategoryKey,
+} from '@/components/expenses/expense-category-icons'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { Expense } from '@/types/database'
@@ -31,23 +35,49 @@ const PAYMENT_METHODS = [
   { value: 'mobile', label: 'Mobile' },
 ] as const
 
-const expenseSchema = z.object({
-  category: z.string().min(1, 'Category is required.'),
-  amount: z
-    .string()
-    .min(1, 'Enter amount')
-    .refine(
-      (s) => !Number.isNaN(parseFloat(s)) && parseFloat(s) > 0,
-      'Amount must be greater than zero.'
-    )
-    .transform((s) => parseFloat(s)),
-  expense_date: z.string().min(1, 'Date is required.'),
-  description: z.string().min(1, 'Description is required.').max(2000),
-  vendor: z.string().max(200).optional().or(z.literal('')),
-  payment_method: z.enum(['cash', 'bank_transfer', 'cheque', 'mobile']),
-  reference: z.string().max(200).optional().or(z.literal('')),
-  notes: z.string().max(5000).optional().or(z.literal('')),
-})
+const paidMethodEnum = z.enum(['cash', 'bank_transfer', 'cheque', 'mobile'])
+
+const expenseSchema = z
+  .object({
+    category: z.string().min(1, 'Category is required.'),
+    amount: z
+      .string()
+      .min(1, 'Enter amount')
+      .refine(
+        (s) => !Number.isNaN(parseFloat(s)) && parseFloat(s) > 0,
+        'Amount must be greater than zero.'
+      )
+      .transform((s) => parseFloat(s)),
+    expense_date: z.string().min(1, 'Date is required.'),
+    description: z.string().min(1, 'Description is required.').max(2000),
+    vendor: z.string().max(200).optional().or(z.literal('')),
+    payment_status: z.enum(['paid', 'pending']),
+    payment_method: paidMethodEnum.optional(),
+    reference: z.string().max(200).optional().or(z.literal('')),
+    notes: z.string().max(5000).optional().or(z.literal('')),
+  })
+  .superRefine((data, ctx) => {
+    if (data.payment_status === 'paid' && !data.payment_method) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Choose a payment method.',
+        path: ['payment_method'],
+      })
+    }
+  })
+  .transform((data) => ({
+    category: data.category,
+    amount: data.amount,
+    expense_date: data.expense_date,
+    description: data.description,
+    vendor: data.vendor,
+    payment_method:
+      data.payment_status === 'pending'
+        ? ('pending' as const)
+        : (data.payment_method as z.infer<typeof paidMethodEnum>),
+    reference: data.reference,
+    notes: data.notes,
+  }))
 
 type ExpenseFormInput = z.input<typeof expenseSchema>
 type ExpenseFormValues = z.output<typeof expenseSchema>
@@ -70,10 +100,24 @@ export function ExpenseForm({ farmId, expenseId, initial }: ExpenseFormProps) {
     initial?.date?.slice(0, 10) ??
     new Date().toISOString().slice(0, 10)
 
+  const initialPending =
+    (initial?.payment_method ?? '').toLowerCase() === 'pending'
+
+  const initialPaidMethod = initial?.payment_method
+  const resolvedPaidMethod =
+    initialPaidMethod &&
+    initialPaidMethod !== 'pending' &&
+    ['cash', 'bank_transfer', 'cheque', 'mobile'].includes(initialPaidMethod)
+      ? (initialPaidMethod as z.infer<typeof paidMethodEnum>)
+      : 'cash'
+
   const {
     register,
     handleSubmit,
     control,
+    watch,
+    setValue,
+    getValues,
     setError,
     formState: { errors },
   } = useForm<ExpenseFormInput, unknown, ExpenseFormValues>({
@@ -84,12 +128,14 @@ export function ExpenseForm({ farmId, expenseId, initial }: ExpenseFormProps) {
       expense_date: defaultDate,
       description: initial?.description ?? '',
       vendor: initial?.vendor ?? '',
-      payment_method:
-        (initial?.payment_method as ExpenseFormValues['payment_method']) ?? 'cash',
+      payment_status: initialPending ? 'pending' : 'paid',
+      payment_method: initialPending ? undefined : resolvedPaidMethod,
       reference: initial?.reference ?? '',
       notes: initial?.notes ?? '',
     },
   })
+
+  const paymentStatus = watch('payment_status')
 
   const onSubmit = (values: ExpenseFormValues) => {
     startTransition(async () => {
@@ -166,11 +212,17 @@ export function ExpenseForm({ farmId, expenseId, initial }: ExpenseFormProps) {
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
-                {EXPENSE_CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
+                {EXPENSE_CATEGORIES.map((c) => {
+                  const Icon = categoryIcons[resolveExpenseCategoryKey(c)]
+                  return (
+                    <SelectItem key={c} value={c}>
+                      <span className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
+                        {c}
+                      </span>
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
           )}
@@ -229,7 +281,7 @@ export function ExpenseForm({ farmId, expenseId, initial }: ExpenseFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="vendor">Vendor</Label>
+        <Label htmlFor="vendor">Vendor / supplier</Label>
         <Input
           id="vendor"
           placeholder="Supplier or payee (optional)"
@@ -239,35 +291,70 @@ export function ExpenseForm({ farmId, expenseId, initial }: ExpenseFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label>Payment method</Label>
+        <Label>Payment status</Label>
         <Controller
-          name="payment_method"
+          name="payment_status"
           control={control}
           render={({ field }) => (
             <Select
               value={field.value}
-              onValueChange={(v) =>
-                v && field.onChange(v as ExpenseFormValues['payment_method'])
-              }
+              onValueChange={(v) => {
+                if (!v) return
+                const next = v as 'paid' | 'pending'
+                field.onChange(next)
+                if (next === 'paid' && !getValues('payment_method')) {
+                  setValue('payment_method', 'cash')
+                }
+              }}
               disabled={isPending}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PAYMENT_METHODS.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>
-                    {m.label}
-                  </SelectItem>
-                ))}
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
               </SelectContent>
             </Select>
           )}
         />
       </div>
 
+      {paymentStatus === 'paid' && (
+        <div className="space-y-2">
+          <Label>Payment method</Label>
+          <Controller
+            name="payment_method"
+            control={control}
+            render={({ field }) => (
+              <Select
+                value={field.value ?? 'cash'}
+                onValueChange={(v) =>
+                  v && field.onChange(v as z.infer<typeof paidMethodEnum>)
+                }
+                disabled={isPending}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.payment_method && (
+            <p className="text-xs text-red-600">{errors.payment_method.message}</p>
+          )}
+        </div>
+      )}
+
       <div className="space-y-2">
-        <Label htmlFor="reference">Reference</Label>
+        <Label htmlFor="reference">Receipt reference</Label>
         <Input
           id="reference"
           placeholder="Receipt #, transaction id…"

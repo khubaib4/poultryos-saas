@@ -175,7 +175,14 @@ export interface Sale {
   /** @deprecated Legacy single amount; prefer total_amount */
   amount?: number | null
   farms?: { name: string }
-  customers?: { id: string; name: string; phone?: string | null; business_name?: string | null }
+  customers?: {
+    id: string
+    name: string
+    phone?: string | null
+    business_name?: string | null
+    category?: string | null
+    address?: string | null
+  }
 }
 
 export interface Payment {
@@ -259,6 +266,7 @@ export interface Vaccination {
     breed: string
     status: FlockStatus
     farm_id: string
+    current_count?: number
   }
 }
 

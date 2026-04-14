@@ -17,6 +17,30 @@ export function formatDate(date: Date | string): string {
   })
 }
 
+/** Expense list: calendar date plus time recorded (`created_at`). */
+export function formatExpenseDateTime(expenseDate: string, createdAt: string): string {
+  const dateStr = formatDate(expenseDate)
+  const t = new Date(createdAt).toLocaleTimeString('en-PK', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+  return `${dateStr}, ${t}`
+}
+
+export function formatCompactPkr(amount: number): string {
+  const n = Math.abs(amount)
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000
+    const s = m >= 10 ? m.toFixed(0) : m.toFixed(1).replace(/\.0$/, '')
+    return `Rs ${s}m`
+  }
+  if (n >= 1000) {
+    return `Rs ${Math.round(n / 1000)}k`
+  }
+  return `Rs ${Math.round(amount).toLocaleString()}`
+}
+
 /** Short label for chart X-axis (ISO date `YYYY-MM-DD`). */
 export function formatChartAxisDate(isoDate: string): string {
   return new Date(`${isoDate}T12:00:00`).toLocaleDateString('en-PK', {

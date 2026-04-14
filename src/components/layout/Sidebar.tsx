@@ -20,6 +20,7 @@ import {
   UserCheck,
   DollarSign,
   Warehouse,
+  Plus,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -207,6 +208,18 @@ export function Sidebar({ profile }: SidebarProps) {
           })}
         </ul>
       </nav>
+
+      {profile.role === 'FARM_USER' ? (
+        <div className="px-3 pb-3">
+          <Link
+            href={buildFarmWorkerHref('/farm/inventory/new', workerFarmQuery)}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-gradient px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark hover:[background-image:none]"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            Add batch
+          </Link>
+        </div>
+      ) : null}
 
       <div className="space-y-2 border-t border-gray-100 p-3">
         <div className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-2">

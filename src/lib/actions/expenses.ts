@@ -55,7 +55,10 @@ export async function createExpenseAction(
       date: data.expense_date,
       description: data.description.trim(),
       vendor: data.vendor?.trim() || null,
-      payment_method: data.payment_method || 'cash',
+      payment_method:
+        data.payment_method === 'pending'
+          ? 'pending'
+          : data.payment_method || 'cash',
       reference: data.reference?.trim() || null,
       notes: data.notes?.trim() || null,
     })
@@ -100,7 +103,10 @@ export async function updateExpenseAction(
       date: data.expense_date,
       description: data.description.trim(),
       vendor: data.vendor?.trim() || null,
-      payment_method: data.payment_method || 'cash',
+      payment_method:
+        data.payment_method === 'pending'
+          ? 'pending'
+          : data.payment_method || 'cash',
       reference: data.reference?.trim() || null,
       notes: data.notes?.trim() || null,
     })

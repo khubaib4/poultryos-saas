@@ -98,13 +98,14 @@ export function AddStockModal({
         onOpenChange(v)
       }}
     >
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>Add stock</DialogTitle>
-            <DialogDescription>{itemName}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
+      <DialogContent className="gap-0 rounded-2xl border-gray-200 p-0 sm:max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col">
+          <div className="p-6">
+            <DialogHeader className="space-y-1 text-left">
+              <DialogTitle className="text-lg font-semibold">Add stock</DialogTitle>
+              <DialogDescription className="text-sm text-gray-500">{itemName}</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-5">
             <div className="space-y-2">
               <Label htmlFor="add-qty">Quantity to add</Label>
               <Input
@@ -135,17 +136,23 @@ export function AddStockModal({
                 </SelectContent>
               </Select>
             </div>
+            </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 border-t border-gray-100 bg-gray-50/80 px-6 py-4 sm:justify-end">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={isPending}
+              className="rounded-xl"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending} className="bg-primary hover:bg-primary-dark">
+            <Button
+              type="submit"
+              disabled={isPending}
+              className="rounded-xl bg-primary hover:bg-primary-dark"
+            >
               {isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
