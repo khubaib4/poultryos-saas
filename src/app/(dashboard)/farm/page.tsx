@@ -154,7 +154,6 @@ export default async function FarmDashboard({
           trend={salesTrend}
           farmId={farmId}
           statType="sales"
-          formatValue={(v) => formatCurrency(v)}
         />
         <ClickableStatCard
           icon={<Bird className="h-6 w-6 text-purple-600" aria-hidden />}

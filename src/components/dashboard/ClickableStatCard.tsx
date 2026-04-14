@@ -30,7 +30,6 @@ interface ClickableStatCardProps {
   trend?: { value: string; direction: 'up' | 'down' | 'steady' }
   farmId: string
   statType: 'eggs' | 'deaths' | 'sales' | 'birds'
-  formatValue?: (value: number) => string
 }
 
 const periodLabels: Record<Period, string> = {
@@ -55,7 +54,6 @@ export function ClickableStatCard({
   trend,
   farmId,
   statType,
-  formatValue = (v) => v.toLocaleString(),
 }: ClickableStatCardProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [period, setPeriod] = useState<Period>('1w')
@@ -65,6 +63,16 @@ export function ClickableStatCard({
   const [loading, setLoading] = useState(false)
 
   const color = chartColors[statType]
+
+  const formatValue = (v: number) => {
+    if (statType === 'sales') {
+      return `Rs ${v.toLocaleString('en-PK', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      })}`
+    }
+    return v.toLocaleString()
+  }
 
   const totals = useMemo(() => {
     const total = chartData.reduce((sum, d) => sum + (d.value ?? 0), 0)
