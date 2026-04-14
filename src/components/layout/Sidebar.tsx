@@ -21,11 +21,13 @@ import {
   DollarSign,
   Warehouse,
   Plus,
+  X,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/types/database'
+import { useSidebar } from '@/components/layout/SidebarContext'
 
 const systemNav = [
   { href: '/system', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -112,6 +114,7 @@ export function Sidebar({ profile }: SidebarProps) {
   const router = useRouter()
   const supabase = createClient()
   const workerFarmQuery = useWorkerFarmQuery(profile.role === 'FARM_USER')
+  const { isOpen, close } = useSidebar()
 
   const navItems =
     profile.role === 'SYSTEM_OWNER'
@@ -136,12 +139,54 @@ export function Sidebar({ profile }: SidebarProps) {
   const farmHref =
     profile.role === 'FARM_USER' ? buildFarmWorkerHref(root, workerFarmQuery) : root
 
+  useEffect(() => {
+    // Close on route change (mobile)
+    close()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+
+  useEffect(() => {
+    // Prevent background scroll while sidebar is open on mobile.
+    if (!isOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [isOpen])
+
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col bg-white shadow-card">
-      <div className="flex min-h-16 flex-col px-4 pb-2 pt-4">
+    <>
+      {/* Backdrop (mobile) */}
+      {isOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={close}
+          aria-hidden
+        />
+      ) : null}
+
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex h-screen w-60 shrink-0 flex-col bg-white shadow-card transition-transform duration-300 ease-in-out lg:static lg:translate-x-0',
+          isOpen ? 'translate-x-0' : '-translate-x-full',
+          'lg:shadow-card'
+        )}
+      >
+        <button
+          type="button"
+          onClick={close}
+          className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-xl hover:bg-gray-50 lg:hidden"
+          aria-label="Close menu"
+        >
+          <X className="h-5 w-5 text-gray-700" />
+        </button>
+
+        <div className="flex min-h-16 flex-col px-4 pb-2 pt-4">
         <Link
           href={farmHref}
           prefetch
+          onClick={close}
           className="flex min-h-11 items-start gap-3 rounded-xl px-1 py-1 transition-opacity hover:opacity-90"
         >
           <div
@@ -189,6 +234,7 @@ export function Sidebar({ profile }: SidebarProps) {
                 <Link
                   href={linkHref}
                   prefetch
+                  onClick={close}
                   className={cn(
                     'flex min-h-11 items-center gap-3 border-l-[3px] py-3 pl-[13px] pr-3 text-sm font-medium transition-colors',
                     isActive
@@ -216,6 +262,7 @@ export function Sidebar({ profile }: SidebarProps) {
           <Link
             href={buildFarmWorkerHref('/farm/inventory/new', workerFarmQuery)}
             prefetch
+            onClick={close}
             className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-gradient px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark hover:[background-image:none]"
           >
             <Plus className="h-4 w-4" aria-hidden />
@@ -248,6 +295,7 @@ export function Sidebar({ profile }: SidebarProps) {
           Sign out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

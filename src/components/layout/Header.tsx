@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Bell, LogOut, User } from 'lucide-react'
+import { Bell, LogOut, Menu, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -18,6 +18,7 @@ import type { UserProfile } from '@/types/database'
 import { OfflineIndicator } from '@/components/offline/OfflineIndicator'
 import { SyncStatus } from '@/components/offline/SyncStatus'
 import { FarmSyncPill } from '@/components/dashboard/FarmSyncPill'
+import { useSidebar } from '@/components/layout/SidebarContext'
 
 const PAGE_TITLES: Record<string, string> = {
   '': 'Dashboard',
@@ -57,6 +58,7 @@ export function Header({ profile }: HeaderProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
+  const { toggle } = useSidebar()
 
   const title = getPageTitle(pathname)
   const name = profile?.name ?? 'User'
@@ -86,14 +88,26 @@ export function Header({ profile }: HeaderProps) {
   }
 
   return (
-    <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 bg-page-bg px-6 py-3">
-      <h1 className="text-2xl font-semibold leading-8 tracking-tight text-gray-900">
-        {title}
-      </h1>
+    <header className="sticky top-0 z-30 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-page-bg px-4 py-3 lg:px-6">
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={toggle}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-card ring-1 ring-black/[0.04] hover:bg-gray-50 lg:hidden"
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5 text-gray-700" />
+        </button>
+        <h1 className="truncate text-xl font-semibold leading-7 tracking-tight text-gray-900 sm:text-2xl sm:leading-8">
+          {title}
+        </h1>
+      </div>
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         {profile?.role === 'FARM_USER' ? (
-          <FarmSyncPill />
+          <div className="hidden sm:block">
+            <FarmSyncPill />
+          </div>
         ) : (
           <>
             <OfflineIndicator />

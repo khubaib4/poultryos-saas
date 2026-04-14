@@ -121,7 +121,7 @@ export default async function FarmDashboard({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5">
         <ClickableStatCard
           icon={<Egg className="h-6 w-6 text-blue-600" aria-hidden />}
           iconBg="bg-blue-100 text-blue-600"
